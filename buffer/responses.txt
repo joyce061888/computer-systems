@@ -1,0 +1,256 @@
+Answer description questions here. Please leave the provided text in
+place and add your answers after each question.
+
+- Many of these questions request only a couple words or an
+  instruction listing from your disassembled code.
+
+- Prose answers should focus on the general meaning of code and data,
+  not only specific numbers or addresses (e.g., "return address", not
+  just "0x4067c5").
+
+
+EXPLOIT 1:
+
+a.  During a successfully exploited execution of the `laptop.bin`, one
+    crucial control-flow instruction is affected by your exploit
+    string data in a way that causes it to choose a different next
+    instruction to execute compared to normal execution (in the
+    absence of buffer overflow), and allow the attack to begin
+    executing different code than usual. What is the instruction
+    address and assembly code for that crucial control-flow
+    instruction in the `laptop.bin` executable?
+
+    The instruction affected is the return address. Instead of allowing
+    the function getBuf to simply return its normal address, we overwrite
+    its return address with the address that calls the smoke function. 
+    This allows the getbuf function to execute the code for smoke after
+    executing its return statement rather than resuming execution in the test
+    function where it was called. 
+    
+    
+b.  What part of your exploit string (described as a byte offset from
+    the start of the string) causes the instruction from (a) to behave
+    differently than normal?  Why?  (Write a sentence or two.)
+    
+    The last 8 bytes (character numbers) or the last 8 most significant bytes
+    of the exploit string causes the instruction from (a) to behave differently
+    than normal. The stack frame for the function getbuf is filled from the lowest
+    significant bytes to the most significant bytes (bottom to top), where the 
+    return address lies at the top of the stack, where the most significant bytes are at, 
+    and the string is read from left (LSB) to right (MSB) and fills in this stack 
+    starting from the bottom (where the LSB are at). 
+
+    
+c.  What instruction executes next after the instruction in (a) in a
+    normal execution? Give the instruction's address and assembly code.
+    
+    The compare instruction at address, 0x0000000000401013 or <test+35>, executes. 
+    The assembly code for this address is 'cmp    $0x28,%rax'. This 
+    compares the value normally returned by getbuf function with 
+    0x28 and jumps to <test+112> if this returned value is below or equal to 0. 
+    The address for this jump command is 0x0000000000401017 and the assembly code
+    is 'jbe    0x401060 <test+112>'. 
+    
+d.  What instruction executes next after the instruction in (a) in
+    your exploited execution? Give the instruction's address and
+    assembly code.
+    
+    The address at the start of the smoke function is executed in the 
+    exploited execution. The address for this is 0x0000000000400f20 and 
+    the assembly code for it is 'sub    $0x8,%rsp', which allocates
+    space for the stack memory for the smoke function. 
+    
+    
+
+EXPLOIT 2:
+
+a.  The retq instruction in getbuf uses one word of your exploit
+    string as a return address. Describe how each subsequent word of
+    the exploit string is interpreted by fizz, including how it finds
+    your cookie as `val`, and why each of these words must be at its
+    position to allow fizz to make this interpretation.
+    
+    When the test function is called, the value, 0xdeadbeef gets put into 
+    the memory stack at this assembly code: 'mov    %rax,-0x18(%rbp)' at 
+    address 0x0000000000400ffe in test (0xdeadbeef was moved into register rax
+    previously), which is 24 bytes below from where rbp is pointing to on the stack. 
+    This is the exact location that we need to overwrite with our cookie address later on
+    so that when fizz is called, cookie can be its input for val rather than 0xdeadbeef. 
+    In address 0x0000000000400f5e in fizz, the assembly code, 'mov    0x10(%rsp),%rsi'
+    is called where it moves the value in argument val into the register %rsi in order to 
+    check whether val equals cookie. This is the instruction in fizz that finds the location
+    in the memory stack where we had stored 0xdeadbeef (or the cookie address if we correctly
+    overwrote it). The function getbuf saves 56 extra bytes of space in the memory stack from
+    the location where the next instruction to execute in the test function after getbuf is 
+    called is stored, meaning that this is the instruction that we want to overwrite in order for the 
+    function fizz to be executed after getbuf is called instead of the next instruction from test
+    that is currently stored in the stack frame. This instruction takes the next 8 bytes
+    of space above the other 56 bytes of space that getbuf saved. This means that in order 
+    to overwrite this instruction to call fizz, we need to first fill the stack from the bottom
+    with 56 random bytes, and then use fizz's call instruction address to fill the next 8 bytes above
+    that. The location at which 0xdeadbeef was stored in the stack frame is 16 bytes above the 
+    location where we need to overwrite with the fizz address, so in order to make sure that
+    cookie's address overwrites 0xdeadbeef, we need to fill 8 bytes above the fizz address with
+    random bytes and fill the next 8 bytes above that in the stack frame with the 8-byte cookie
+    address. 
+    
+b.  What instruction in `fizz` finds the value of the `val` argument?
+    Give the instruction's address and assembly code.
+
+    The instruction's address is 0x0000000000400f5e and the assembly 
+    code is 'mov    0x10(%rsp),%rsi' from function fizz.
+    
+c.  Where does the instruction from (b) find `val` relative to the top
+    of the call stack?  (Give a byte offset.)
+    
+    That instruction finds 'val' 16 bytes above from the top of the call stack, 
+    where the stack pointer will be before the instrucion in (b) is called. 
+    
+
+EXPLOIT 3:
+
+a.  Starting with (including) the `ret` instruction in `getbuf`, list
+    the sequence of instructions that the computer executes under your
+    exploit up through (including) the first instruction in
+    `bang`. For each instruction, list the instruction address and its
+    assembly code.
+
+    1. 'retq' in getbuf gets called
+        instruction address: 0x0000000000400e6a; assembly code: 'retq'
+    2. address that points to location in memory stack that calls exploit code gets called;
+       the first instruction moves value of cookie into register %rax
+        instrucion address: 0x6a0012d52e31d89ab848; assembly code: 'movq $0x6a0012d52e31d89a, %rax'
+    3. contents of register %rax gets moved into location in memory of global_value
+        instrucion address: 0x0060212825048948; assembly code: 'movq %rax, 0x602128'
+    4. address that calls function bang is pushed into stack
+        instruction address: 0x00400f9068; assembly code: 'push $0x0000000000400fa0'
+    5. return and end exploit code; pop the address that call bang
+        instruction address: 0xc3; assembly code: 'retq'
+    6. bang's first instruction that allocates memory in stack
+        instructions address: 0x0000000000400fa0; assembly code: 'sub $0x8,%rsp'
+
+b.  Describe how the instruction sequence in (a) changes memory
+    contents, register contents, and program counter (i.e.,
+    `%rip`). Write a couple/few sentences or annotate your listing
+    above.
+    
+    The 'ret' instruction in the function getbuf, which has the address
+    0x0000000000400e6a and assembly code retq, pops the return address 
+    from the top of the stack into %rip and moves the stack pointer,
+    rsp, up the stack by 8 bytes (1 cell). When this happens, the overwritten
+    return address' location in the stack that now has the address that calls
+    my exploit code is called. This address, 0x7fffffffb8d0, points to the exploit code instruction 
+    on the bottom of the stack memory where rsp_6 or the address in register %rdi 
+    points to. From here, we move the value of cookie into register %rax, which
+    has the instruction address of 0x6a0012d52e31d89ab848 and the assembly code
+    of 'movq $0x6a0012d52e31d89a, %rax'. Then, we move the contents of register %rax 
+    into the address of global_value when we call the instruction address 0x0060212825048948
+    and the assembly code 'movq %rax, 0x602128'. Lastly, in the exploit code, we push the address 
+    that calls the function bang into the stack with the instruction address of 0x00400f9068 and 
+    assembly code, 'push $0x0000000000400fa0', then we call the exploit code's 'retq' that has the 
+    instruction address of 0xc3. This calls the instruction 'retq' that pops the pushed address 
+    to call bang. The stack pointer moves up the stack by 8 bytes after this pop. The 
+    function bang's first instruction address that was popped from the stack is 0x0000000000400fa0
+    and the assembly code for it is 'sub $0x8,%rsp' which allocated space in the stack for 
+    this function by moving the stack pointer down by 8 bytes. 
+    
+    In summary, we overwrite the return address of the function getbuf so that when bang 
+    finishes its function call, it returns to an address in the stack memory that calls 
+    the exploit code that replaces the current value of global_value with the cookie value
+    and calls the function bang, so after getbuf gets called in the function test, it
+    never finishes executing the rest of the code in test but rather goes to the exploit
+    code which leads to the function bang. 
+    
+
+EXPLOIT 4:
+
+Besides the primary behavior of providing a "modified" return value, a
+successful exploit for this part must also take care to "cover its
+tracks" and avoid corruption that could cause segmentation faults or
+other unexpected behavior in the remainder of the computation in
+`test` and its callers after the exploit causes this "modified" return
+from `getbuf`.
+
+Explain in detail how your exploit works and avoids the potential
+corruption, including:
+
+a.  How is the potential corruption related to register saving
+    conventions and the `leaveq` instruction?
+
+    The 'leaveq' instruction in the function getbuf() moves %rbp into
+    the stack pointer %rsp then pops %rbp. When Gets() gets called in getbuf(),
+    the memory stack starts filling the stack from the bottom of the stack (where 
+    the stack pointer will be at that point) with the exploit string input. This
+    fills the stack with the bytes that addresses my exploit code the fills the rest 
+    of the space with filler bytes until we reach the location where the return address of getbuf 
+    is stored. Here, we overwrite the return address with the address that points to the 
+    location in the stack where the exploit code address is stored so that the exploit
+    can execute once getbuf returns. As we do this, we would've overwritten the address
+    of rbp (that was rsp_1, which is 0x7fffffffb930) that was stored right below the location
+    where the return address of getbuf was at. When getbuf calls the instruction, 'leaveq', 
+    it will move %rbp into the stack pointer %rsp then pop the value stored at the top
+    of the stack into register %rbp. That value at the top of the stack that will be 
+    stored into %rbp are the filler bytes that overwrote the address that was supposed 
+    to be there (the address of rsp_1 that was stored in rbp initially). The exploit 
+    string corrupted the location in stack that stored the address that was supposed to be in 
+    %rbp, which is why the exploit code needs to hide its traces by restoring the value 
+    in %rbp as well as restore that location in the stack with that value. 
+
+b.  Which register or memory location would hold a corrupted value
+    after execution of your exploit code if your exploit did not
+    "cover its tracks?"
+
+    If the exploit code did not cover its tracks and only sets the return 
+    value of getbuf to the cookie's address and referred to the next instruction in
+    test(), %rbp would've had filler bytes from the exploit string and the location in
+    the stack memory where the original value of rbp (rsp_1) was supposed to be stored
+    will have had the filler bytes. The location at which the return address of getbuf
+    should be in the stack will still contain the address that calls the exploit code. 
+
+c.  What instruction(s) (with address) in `getbuf` would place a
+    correct value in that register or memory location under normal
+    execution, but would instead place the corrupt value there under
+    an exploit that does not "cover its tracks?"
+
+    The 'leaveq' instruction in address 0x0000000000400e69 of getbuf()
+    will pop the correct value into %rbp under normal execution but would
+    instead pop the filler bytes (incorrect value) from the exploit string 
+    into %rbp under an exploit that does not cover its tracks. 
+
+d.  Which instruction (with address) in `test` could first raise a
+    segmentation fault (or lead to other data corruption) when using
+    the corrupt value from that register or memory location?
+
+    The instruction, 'mov -0x18(%rbp),%rbx', at address 0x0000000000401019 in test()
+    could first raise an issue when using the corrupt value (filler bytes) from register 
+    %rbp instead of the correct value which is the address of the stack pointer, rsp_1,
+    which was the first value stored into %rbp from test(). This instruction gets the value
+    stored 24 bytes below the stack pointer, rsp_1, which is 0xdeadbeef, but if %rbp
+    contained the corrupted value, it will have an invalid address of filler bytes. 
+
+e.  How does your exploit "covers its tracks" to avoid this corruption?
+
+    My exploit covers its tracks by first pushing the return address of getbuf()
+    back into the stack at the location where it was originally. At the start of my 
+    exploit code's execution, the stack pointer will be right above the location
+    where the return address of getbuf was originally, and so pushing the original
+    value at the start of my exploit code's execution will overwrite the address
+    that overwrote the return address of getbuf back to the return address of getbuf 
+    at the right location in the stack. After this, the stack pointer will be moved
+    down the stack by 8 bytes (after the push) and this is the exact location where the 
+    initial value in %rbp (which  the address of rsp_1) was stored in the stack, so 
+    by pushing the address of rsp_1 into the stack at this point, will overwrite the 
+    filler bytes from the exploit string back to the correct value of rsp_1 into the stack.
+    Lastly, I covered the exploit's tracks by recovering the address of rsp_1 into %rbp.
+    As explained above, %rbp contains filler bytes after getbuf executes the instruction
+    'leaveq' that basically popped the value at the location where the address of rsp_1
+    was supposed to be at into %rbp. However, under normal execution, the address of rsp_1
+    would have been popped into %rbp and so I needed to move that address of rsp_1
+    (found by running getbuf with a breakpoint) into %rbp. At the end, I simply moved the 
+    stack pointer back up by 8 bytes (to point at the return address of getbuf) so that
+    when the exploit code returns, it returns to test() at the return address of getbuf(). 
+
+
+Notes:
+rsp_1 = 0x7fffffffb930
+return address of getbuf (in test) = 0x0000000000401013
