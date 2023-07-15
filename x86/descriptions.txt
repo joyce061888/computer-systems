@@ -1,0 +1,144 @@
+Write a succinct paragraph or two for each phase, describing:
+- What the phase is computing with your input at a high level of
+  abstraction.
+- Some key features of the x86 code that correspond to the high-level
+  computation.
+
+Describe at a high level as if you are summarizing whatever C code
+compiled to this assembly/machine code.  (Feel free to write C to
+describe what is computed.) Do mention a couple assembly details that
+figure prominently in how the low-level x86 code implements the
+high-level structure, but do not give a line-by-line run-down of the
+assembly code.
+
+Phase 1
+Phase 1 compares the user's input string with the correct answer, and if the strings
+are equal, the user will successfully pass Phase 1. The user's input is stored into 
+%rdi (1st parameter) and the correct answer is stored into %rsi (2nd parameter). The 
+line 'mov    $0x402173,%esi' moves the correct answer into %rsi, and the line right
+after this, 'callq  0x4013ee <strings_not_equal>', checks if the strings are equal.
+If equal, it returns 0, if not equal, it returns 1. The line after that, 
+'test   %eax,%eax', tests whether this returned value is 0 or not using bitwise AND. 
+If this tested value is indeed 0, meaning the strins were equal, the next line of code
+will be executed, 'je     0x401097 <phase_1+23>', that jumps to the end of the function,
+and then returns to main. This jump skips the line of code that triggers the alarm. If
+test returned 1, meaning the strings were not equal, we will not jump and instead trigger
+the alarm. 
+
+Phase 2
+Phase 2 takes in 6 numbers as a string, spaced out, and checks if those
+numbers are correct in relation to each other. Phase 2 calls the function
+read_six_numbers that allocates space and puts the inputted 6 integers into 
+the memory stack. The register addresses point to these values in memory. 
+Register rdx points to the first integer in the input, rcx points to the 
+2nd integer, r8 points to the third, r9 to the 4th and for the 5th and 6th
+integers, we need to store pointer addresses of it in memory since there
+aren't enough registers to store more addresses to these values, so the addresses
+of the 5th and 6th values are stored in memory. After the 6 numbers are 
+put into memory with their addresses either stored in the registers or in memory, 
+we go back to the next instruction in phase 2 that basically, initializes the 
+addresses stored in register rbx and rbp, and loops through the next few instructions
+until the addresses stored in rbx and rbp match. This loop checks two integers
+at a time (for example, compares the 1st value with the 2nd value then the 2nd value
+with the 3rd value and so on) after adding 5 to the first of the 2 values, and 
+if they're not equal, the alarm is tripped, otherwise, it adds 4 to the address 
+stored in register rbx and loops until the address stored in rbx reaches the address 
+stored in rbp. This means that the 6 numbers in the input must be increasing by 5 each 
+time or the alarm will be activated. The correct input needs to have 6 integers that
+increase by 5. In the code of phase_2, 'mov    -0x4(%rbx),%eax', calculates the address
+4 below register rbx that is currently pointing away up from register rsp and stores the
+value in that calculated address into register eax. This essentially gets the next value
+in the input by going to the address of the register that points to it and adds 5 to it
+when 'add    $0x5,%eax' is called after it. So for the first iteration, the 1st value will
+be stored into register eax and 5 will be added to it then stored back into register eax. 
+The next line of code compares this value with the value that register rbx currently points
+to, which will be the next value in the input. In the first iteration, it will be the 2nd value.
+The line, 'cmp    %eax,(%rbx)' and 'je     0x4010c8 <phase_2+39>' checks to see if a value+5 
+equals the value right after that in the input, and if so, does not trip the alarm and instead
+increments the address in register rbx and repeats the process for the next two numbers in 
+the input. 
+
+Phase 3
+Phase 3 takes in 2 decimal numbers as a string input and scans it with a "%d %d" 
+format then stores the two decimal numbers inputted by the user into the registers
+%rdx and %rcx. In high-level, this function is a switch case function. Depending
+on the 1st number in the input, the function checks whether the 2nd number in the 
+input trips the alarm or not. In other words, the 1st value takes us to a line
+of code that tells us which value input needs to be in the 2nd number in the input
+to not trip the alarm. A few key lines of code is 'cmpl   $0x7,0xc(%rsp)' and
+'ja   0x401142 <phase_3+106>', that tells us that the 1st number from the input
+(that's stored in memory in address 0xc(%rsp)) needs to be between 0 to 7, inclusive
+or the alarm will be tripped. The line, 'jmpq   *0x4021a0(,%rax,8)' calculates the 
+address in the jump table that the function takes from the table, depending on the value
+we stored in the register %rax (which is our 1st number in the input). With that address
+from the jump table, the function is able to choose the case to switch to, where it stores
+a value into register %eax and compares that value to our 2nd number in the input.
+If they are the same, we end the function call, if not, we trip the alarm. This means
+that whatever value was stored in the register %eax is the value that our 2nd number
+in the input has to be in order to not trigger the alarm. Something to note is that
+the jump table had 8 addresses that referred to 8 of the switch cases in Phase 3. 
+There were 2 other cases but there were no instructions in the code that jumped to 
+those cases. In each of the cases, a different value was stored into the register 
+%eax that was later compared to the 2nd value in the input. 
+
+
+Phase 4
+In phase 4, there is a recursive function called in it. Phase 4 takes in 
+a string with one decimal value and scans it. In high-level, this function
+basically takes in a string input containing one integer (that has to be > 0), 
+parses that value from the string, then hands it off to func4. This value will 
+be the number of times we recurse through the func4 imbedded in phase 4. In the 
+recursive function, func4, we first initialize a value in register %eax (to 1) multiply
+that value by 8, store it into register %edx, subtract the value in register
+%eax from the value in register %edx, and give that value to register %eax
+recursively. The function repeats this process the number of times equal to
+the inputted decimal value. In the assembly code, the line 'lea    0x0(,%rax,8),%edx' 
+takes the value in register %rax and multiplies it by 8 then gives this calculated
+value to register %edx. Next, the line, 'sub    %eax,%edx', subtracts the value in
+register %rax from this value (in %edx) and assigns this to register %edx. Finally,
+the line 'mov    %edx,%eax' gives this new, calculated value currently in %edx
+to register %eax. These lines of code are executed in the recursive calls until
+we reach the base case, which is shown in the line, 'test   %edi,%edi' and 
+'jle    0x401187 <func4+36>' that tests whether the current value in %edi (our
+input number that's decremented in each resursive call) is less than or equal to 0, 
+and when it is, we jump to return. After the recursion, we go back to phase 4 function
+where we check if the value stored in register %eax (from the recursive calls) reach a 
+value equal to 0x41a7 == 16807, and if it did then we successuly skip the trip_alarm
+and end the function call. From this, we know that in order to not trip the alarm
+the inputted value must be the correct number of times we need to recurse through
+func4 imbedded in function phase_4 in order to have a value in register %eax that 
+equals 16807. 
+
+Phase 5
+Phase 5 take a string input of characters and uses a pointer to iterate through
+the characters in the string and trips the alarm if the input is not correct. 
+The function string_length gets the length of the input string, and phase_5
+checks to see whether that string length has a length of 6 (if not, it trips 
+the alarm!). In order to get the length of the string, the function string_length
+has a pointer at the starting character of the string and another pointer that
+iterates through the characters in the string until it reaches the null character. 
+As that second pointer moves, it gets the length of the string by subtracting the 
+address of the 1st pointer from the 2nd pointer. The function iterates through
+this process until the second pointer reaches the null character, and when it does,
+it returns the length of the string by subtracting the 1st pointer that still points
+to the first character from the 2nd pointer that now points to the null character at 
+the end of the string. After making sure that length is 6, phase_5 goes through each 
+character in the string again, gets each characters' asc value and sign extends it (done in 
+line 'movzbl (%rbx,%rax,1),%ecx'), bitwise ANDs it with 0xF to get the last nyble of 
+the characters' asc hex value and uses this value to get the value stored in the array 
+table from address 0x4021e0 (which line 'add 0x4021e0(,%rcx,4),%edx' does). With this value 
+from the array, it increments it in register %rdx until reaching the last character in the 
+array (loops 6 times). The value incremented in register %rdx must be equal to $0x3f, 
+which is 63 in decimal, in order to not trip the alarm. Each of the values we get 
+from the array table lets us know what the last nyble we get from bitwising AND each characters' 
+asc table value needs to be in order to get the correct value from the table to increment the 
+value in register %rdx. Basically, the last nyble value of each character must be the correct number of "jumps"
+from address 0x4021e0 in the array table (featured by x /8wd 0x4021e0) to get 6 values
+that'll add up to 63, and with these last nybles we can use the asc table to get the characters
+that have these LSB nybles. 
+
+Phase 6
+Phase 6 takes in an input integer that is expanded to a long (8 bytes) through
+the C library function strtol. In fun6 function, it is sorted. I don't know what 
+happens after tha :<
+
